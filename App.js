@@ -16,7 +16,7 @@ const KAABA = {
   longitude: 39.826206,
 };
 
-const FALLBACK_LOCATION = {
+const FALLBACK = {
   latitude: 41.0082,
   longitude: 28.9784,
   city: 'İstanbul',
@@ -33,13 +33,13 @@ const PRAYERS = [
   { key: 'Isha', name: 'Yatsı', icon: '🌙' },
 ];
 
-const METHOD_BY_COUNTRY = {
+const METHODS = {
   TR: 13,
   SA: 4,
   EG: 5,
   PK: 1,
-  BD: 1,
   IN: 1,
+  BD: 1,
   US: 2,
   CA: 2,
   GB: 3,
@@ -51,112 +51,82 @@ const METHOD_BY_COUNTRY = {
   CH: 3,
 };
 
-function pad(value) {
-  return String(value).padStart(2, '0');
-}
+const pad = (n) => String(n).padStart(2, '0');
 
-function getDateString(date = new Date()) {
+function dateString(date = new Date()) {
   return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
 }
 
-function formatTime(time) {
-  if (!time) return '--:--';
-  return time.substring(0, 5);
+function formatTime(value) {
+  return value ? value.substring(0, 5) : '--:--';
 }
 
-function timeToMinutes(time) {
-  if (!time) return 0;
-
-  const clean = time.substring(0, 5);
-  const [hours, minutes] = clean.split(':').map(Number);
-
-  return hours * 60 + minutes;
+function minutes(value) {
+  if (!value) return 0;
+  const [h, m] = value.substring(0, 5).split(':').map(Number);
+  return h * 60 + m;
 }
 
-function formatCountdown(seconds) {
+function countdown(seconds) {
   if (seconds <= 0) return '00:00:00';
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-
-  return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
-function getMethod(countryCode) {
-  return METHOD_BY_COUNTRY[countryCode] || 3;
-}
-
-function getNextPrayer(timings, now) {
+function nextPrayer(timings, now) {
   if (!timings) return null;
 
-  const currentMinutes =
+  const current =
     now.getHours() * 60 +
     now.getMinutes() +
     now.getSeconds() / 60;
 
   for (const prayer of PRAYERS) {
-    if (!timings[prayer.key]) continue;
+    const value = timings[prayer.key];
+    if (!value) continue;
 
-    const prayerMinutes = timeToMinutes(timings[prayer.key]);
+    const target = minutes(value);
 
-    if (prayerMinutes > currentMinutes) {
+    if (target > current) {
       return {
         ...prayer,
-        time: timings[prayer.key],
-        seconds: Math.floor(
-          (prayerMinutes - currentMinutes) * 60
-        ),
+        time: value,
+        seconds: Math.floor((target - current) * 60),
       };
     }
   }
 
-  const firstPrayer = PRAYERS.find(
-    (prayer) => timings[prayer.key]
-  );
+  const first = PRAYERS.find((p) => timings[p.key]);
+  if (!first) return null;
 
-  if (!firstPrayer) return null;
-
-  const firstMinutes =
-    timeToMinutes(timings[firstPrayer.key]);
-
-  const seconds = Math.floor(
-    (24 * 60 - currentMinutes + firstMinutes) * 60
-  );
+  const target = minutes(timings[first.key]);
 
   return {
-    ...firstPrayer,
-    time: timings[firstPrayer.key],
-    seconds,
+    ...first,
+    time: timings[first.key],
+    seconds: Math.floor(
+      (24 * 60 - current + target) * 60
+    ),
   };
 }
 
-function calculateQiblaBearing(latitude, longitude) {
-  const lat1 = (latitude * Math.PI) / 180;
-  const lat2 = (KAABA.latitude * Math.PI) / 180;
+function qiblaBearing(lat, lon) {
+  const a = (lat * Math.PI) / 180;
+  const b = (KAABA.latitude * Math.PI) / 180;
+  const dl =
+    ((KAABA.longitude - lon) * Math.PI) / 180;
 
-  const deltaLongitude =
-    ((KAABA.longitude - longitude) * Math.PI) / 180;
-
-  const y = Math.sin(deltaLongitude);
-
+  const y = Math.sin(dl);
   const x =
-    Math.cos(lat1) * Math.tan(lat2) -
-    Math.sin(lat1) * Math.cos(deltaLongitude);
+    Math.cos(a) * Math.tan(b) -
+    Math.sin(a) * Math.cos(dl);
 
-  let bearing =
-    (Math.atan2(y, x) * 180) / Math.PI;
-
-  bearing = (bearing + 360) % 360;
-
-  return bearing;
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
-function normalizeAngle(angle) {
-  return ((angle % 360) + 360) % 360;
-}
-
-function getDirectionName(degrees) {
+function direction(degrees) {
   if (degrees >= 337.5 || degrees < 22.5) return 'Kuzey';
   if (degrees < 67.5) return 'Kuzeydoğu';
   if (degrees < 112.5) return 'Doğu';
@@ -167,76 +137,49 @@ function getDirectionName(degrees) {
   return 'Kuzeybatı';
 }
 
-function countryCodeFromCountry(country) {
-  const countries = {
-    Türkiye: 'TR',
-    Turkey: 'TR',
-    Germany: 'DE',
-    Deutschland: 'DE',
-    France: 'FR',
-    Frankreich: 'FR',
-    Netherlands: 'NL',
-    Belgium: 'BE',
-    Austria: 'AT',
-    Switzerland: 'CH',
-    Canada: 'CA',
-    India: 'IN',
-    Pakistan: 'PK',
-    Bangladesh: 'BD',
-    Egypt: 'EG',
-    'Saudi Arabia': 'SA',
-    'United States': 'US',
-    'United Kingdom': 'GB',
-  };
-
-  return countries[country] || '';
+function normalize(value) {
+  return ((value % 360) + 360) % 360;
 }
 
 export default function App() {
   const [location, setLocation] = useState(null);
   const [timings, setTimings] = useState(null);
   const [hijri, setHijri] = useState(null);
-
   const [heading, setHeading] = useState(0);
-  const [qiblaBearing, setQiblaBearing] = useState(null);
+  const [qibla, setQibla] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [locationLoading, setLocationLoading] = useState(true);
-
   const [error, setError] = useState(null);
-  const [compassError, setCompassError] = useState(null);
-
-  const [now, setNow] = useState(new Date());
   const [activeTab, setActiveTab] = useState('home');
+  const [now, setNow] = useState(new Date());
 
   useEffect(() => {
-    let mounted = true;
+    let alive = true;
 
-    async function loadLocation() {
+    async function getLocation() {
       try {
-        setLocationLoading(true);
-
         const permission =
           await Location.requestForegroundPermissionsAsync();
 
         if (permission.status !== 'granted') {
-          if (mounted) {
-            setLocation(FALLBACK_LOCATION);
-            setError(
-              'Konum izni verilmedi. İstanbul varsayılan konum olarak kullanılıyor.'
-            );
-          }
-
+          setLocation(FALLBACK);
+          setQibla(
+            qiblaBearing(
+              FALLBACK.latitude,
+              FALLBACK.longitude
+            )
+          );
+          setError(
+            'Konum izni verilmedi. İstanbul kullanılıyor.'
+          );
           return;
         }
 
-        const current =
+        const result =
           await Location.getCurrentPositionAsync({
             accuracy: Location.Accuracy.Balanced,
           });
-
-        const latitude = current.coords.latitude;
-        const longitude = current.coords.longitude;
 
         let city = 'Bulunduğun Konum';
         let country = '';
@@ -245,91 +188,79 @@ export default function App() {
         try {
           const addresses =
             await Location.reverseGeocodeAsync({
-              latitude,
-              longitude,
+              latitude: result.coords.latitude,
+              longitude: result.coords.longitude,
             });
 
           if (addresses?.length) {
-            const address = addresses[0];
+            const a = addresses[0];
 
             city =
-              address.city ||
-              address.subregion ||
-              address.region ||
-              'Bulunduğun Konum';
+              a.city ||
+              a.subregion ||
+              a.region ||
+              city;
 
-            country = address.country || '';
-
-            countryCode =
-              address.isoCountryCode ||
-              countryCodeFromCountry(country);
+            country = a.country || '';
+            countryCode = a.isoCountryCode || '';
           }
-        } catch (geocodeError) {
-          console.log('Geocode error:', geocodeError);
-        }
+        } catch {}
 
-        if (mounted) {
-          setLocation({
-            latitude,
-            longitude,
-            city,
-            country,
-            countryCode,
-          });
+        const data = {
+          latitude: result.coords.latitude,
+          longitude: result.coords.longitude,
+          city,
+          country,
+          countryCode,
+        };
 
-          setQiblaBearing(
-            calculateQiblaBearing(
-              latitude,
-              longitude
+        if (alive) {
+          setLocation(data);
+          setQibla(
+            qiblaBearing(
+              data.latitude,
+              data.longitude
             )
           );
+          setError(null);
         }
-      } catch (locationError) {
-        console.log(locationError);
-
-        if (mounted) {
-          setLocation(FALLBACK_LOCATION);
-          setQiblaBearing(
-            calculateQiblaBearing(
-              FALLBACK_LOCATION.latitude,
-              FALLBACK_LOCATION.longitude
-            )
-          );
-
-          setError(
-            'Konum alınamadı. İstanbul varsayılan konum olarak kullanılıyor.'
-          );
-        }
+      } catch (e) {
+        setLocation(FALLBACK);
+        setQibla(
+          qiblaBearing(
+            FALLBACK.latitude,
+            FALLBACK.longitude
+          )
+        );
+        setError(
+          'Konum alınamadı. İstanbul kullanılıyor.'
+        );
       } finally {
-        if (mounted) {
-          setLocationLoading(false);
-        }
+        if (alive) setLocationLoading(false);
       }
     }
 
-    loadLocation();
+    getLocation();
 
     return () => {
-      mounted = false;
+      alive = false;
     };
   }, []);
 
   useEffect(() => {
     if (!location) return;
 
-    let mounted = true;
+    let alive = true;
 
-    async function loadPrayerTimes() {
+    async function getPrayerTimes() {
       try {
         setLoading(true);
 
-        const date = getDateString();
-        const method = getMethod(
-          location.countryCode
-        );
+        const method =
+          METHODS[location.countryCode] || 3;
 
         const url =
-          `https://api.aladhan.com/v1/timings/${date}` +
+          `https://api.aladhan.com/v1/timings/${dateString()}` +
           `?latitude=${location.latitude}` +
           `&longitude=${location.longitude}` +
           `&method=${method}`;
@@ -338,36 +269,29 @@ export default function App() {
         const json = await response.json();
 
         if (!response.ok || json.code !== 200) {
-          throw new Error(
-            'Namaz vakitleri alınamadı.'
-          );
+          throw new Error();
         }
 
-        if (mounted) {
+        if (alive) {
           setTimings(json.data.timings);
-          setHijri(
-            json.data.date?.hijri || null
-          );
+          setHijri(json.data.date?.hijri);
+          setError(null);
         }
-      } catch (fetchError) {
-        console.log(fetchError);
-
-        if (mounted) {
+      } catch {
+        if (alive) {
           setError(
-            'Namaz vakitleri alınırken bir sorun oluştu.'
+            'Namaz vakitleri alınırken sorun oluştu.'
           );
         }
       } finally {
-        if (mounted) {
-          setLoading(false);
-        }
+        if (alive) setLoading(false);
       }
     }
 
-    loadPrayerTimes();
+    getPrayerTimes();
 
     return () => {
-      mounted = false;
+      alive = false;
     };
   }, [
     location?.latitude,
@@ -376,275 +300,128 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    let mounted = true;
-    let subscription = null;
+    let subscription;
 
-    async function startCompass() {
+    async function compass() {
       try {
         const permission =
           await Location.getForegroundPermissionsAsync();
 
-        if (permission.status !== 'granted') {
-          if (mounted) {
-            setCompassError(
-              'Pusula için konum izni gerekiyor.'
-            );
-          }
-
-          return;
-        }
+        if (permission.status !== 'granted') return;
 
         subscription =
-          await Location.watchHeadingAsync(
-            (data) => {
-              if (!mounted) return;
+          await Location.watchHeadingAsync((data) => {
+            let value = data.trueHeading;
 
-              let currentHeading =
-                data.trueHeading;
-
-              if (
-                typeof currentHeading !== 'number' ||
-                currentHeading < 0
-              ) {
-                currentHeading = data.magHeading;
-              }
-
-              if (
-                typeof currentHeading === 'number' &&
-                currentHeading >= 0
-              ) {
-                setHeading(currentHeading);
-                setCompassError(null);
-              }
+            if (
+              typeof value !== 'number' ||
+              value < 0
+            ) {
+              value = data.magHeading;
             }
-          );
-      } catch (headingError) {
-        console.log(headingError);
 
-        if (mounted) {
-          setCompassError(
-            'Pusula başlatılamadı. Telefonu hareket ettirip tekrar deneyin.'
-          );
-        }
-      }
+            if (
+              typeof value === 'number' &&
+              value >= 0
+            ) {
+              setHeading(value);
+            }
+          });
+      } catch {}
     }
 
-    startCompass();
+    compass();
 
     return () => {
-      mounted = false;
-
-      if (subscription) {
-        subscription.remove();
-      }
+      if (subscription) subscription.remove();
     };
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(new Date());
-    }, 1000);
+    const timer = setInterval(
+      () => setNow(new Date()),
+      1000
+    );
 
     return () => clearInterval(timer);
   }, []);
 
-  const nextPrayer = useMemo(
-    () => getNextPrayer(timings, now),
+  const next = useMemo(
+    () => nextPrayer(timings, now),
     [timings, now]
   );
 
-  const countdown = nextPrayer
-    ? formatCountdown(nextPrayer.seconds)
-    : '--:--:--';
-
   const hijriText = hijri
-    ? `${hijri.day} ${
-        hijri.month?.ar || ''
-      } ${hijri.year}`
+    ? `${hijri.day} ${hijri.month?.ar || ''} ${hijri.year}`
     : 'Hicri tarih yükleniyor...';
 
-  const todayText = new Intl.DateTimeFormat(
-    'tr-TR',
-    {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    }
-  ).format(now);
+  const today = new Intl.DateTimeFormat('tr-TR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(now);
 
-  const qiblaDirection =
-    qiblaBearing !== null
-      ? normalizeAngle(
-          qiblaBearing - heading
-        )
-      : 0;
-
-  const qiblaDegrees =
-    qiblaBearing !== null
-      ? Math.round(qiblaBearing)
-      : '--';
+  if (activeTab === 'quran') {
+    return (
+      <QuranScreen
+        onBack={() => setActiveTab('home')}
+      />
+    );
+  }
 
   if (activeTab === 'qibla') {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <StatusBar
-          barStyle="light-content"
-          backgroundColor="#061218"
-        />
+      <QiblaScreen
+        location={location}
+        qibla={qibla}
+        heading={heading}
+        onBack={() => setActiveTab('home')}
+        setActiveTab={setActiveTab}
+      />
+    );
+  }
 
-        <ScrollView
-          contentContainerStyle={
-            styles.container
-          }
-        >
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.greeting}>
-                Kıble
-              </Text>
+  if (activeTab === 'zikr') {
+    return (
+      <Placeholder
+        icon="📿"
+        title="Zikir"
+        text="Zikir ve tesbihat bölümü hazırlanıyor."
+        onBack={() => setActiveTab('home')}
+        activeTab="zikr"
+        setActiveTab={setActiveTab}
+      />
+    );
+  }
 
-              <Text style={styles.appTitle}>
-                Kıble Pusulası
-              </Text>
-            </View>
+  if (activeTab === 'duas') {
+    return (
+      <Placeholder
+        icon="🤲"
+        title="Dualar"
+        text="Günlük dualar bölümü hazırlanıyor."
+        onBack={() => setActiveTab('home')}
+        activeTab="duas"
+        setActiveTab={setActiveTab}
+      />
+    );
+  }
 
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() =>
-                setActiveTab('home')
-              }
-            >
-              <Text style={styles.backText}>
-                ←
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.qiblaMainCard}>
-            <Text style={styles.qiblaMainTitle}>
-              🕋 Kâbe yönü
-            </Text>
-
-            <Text style={styles.qiblaLocation}>
-              {location?.city || 'Konum'}
-            </Text>
-
-            <View style={styles.compass}>
-              <View
-                style={[
-                  styles.compassNeedle,
-                  {
-                    transform: [
-                      {
-                        rotate: `${qiblaDirection}deg`,
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <Text style={styles.needle}>
-                  ▲
-                </Text>
-              </View>
-
-              <View style={styles.compassCenter}>
-                <Text style={styles.kaaba}>
-                  🕋
-                </Text>
-              </View>
-
-              <Text
-                style={[
-                  styles.compassLabel,
-                  styles.north,
-                ]}
-              >
-                N
-              </Text>
-
-              <Text
-                style={[
-                  styles.compassLabel,
-                  styles.east,
-                ]}
-              >
-                E
-              </Text>
-
-              <Text
-                style={[
-                  styles.compassLabel,
-                  styles.south,
-                ]}
-              >
-                S
-              </Text>
-
-              <Text
-                style={[
-                  styles.compassLabel,
-                  styles.west,
-                ]}
-              >
-                W
-              </Text>
-            </View>
-
-            <Text style={styles.qiblaDegrees}>
-              {qiblaDegrees}°
-            </Text>
-
-            <Text style={styles.qiblaDirectionText}>
-              {qiblaBearing !== null
-                ? getDirectionName(
-                    qiblaBearing
-                  )
-                : 'Hesaplanıyor...'}
-            </Text>
-
-            {compassError ? (
-              <View
-                style={styles.warningCard}
-              >
-                <Text
-                  style={styles.warningText}
-                >
-                  {compassError}
-                </Text>
-              </View>
-            ) : null}
-
-            <Text style={styles.compassHint}>
-              Telefonunu yatay tut ve ekrandaki
-              yön göstergesini Kâbe yönüne
-              çevir.
-            </Text>
-          </View>
-
-          <View style={styles.infoCard}>
-            <Text style={styles.infoTitle}>
-              🧭 Canlı pusula
-            </Text>
-
-            <Text style={styles.infoText}>
-              Pusula yönü telefon sensörlerinden
-              alınır. Konum izni, gerçek kuzey
-              bilgisinin kullanılabilmesi için
-              gereklidir.
-            </Text>
-          </View>
-        </ScrollView>
-
-        <BottomBar
-          activeTab="qibla"
-          setActiveTab={setActiveTab}
-        />
-      </SafeAreaView>
+  if (activeTab === 'settings') {
+    return (
+      <Placeholder
+        icon="⚙️"
+        title="Ayarlar"
+        text="Dil, hesaplama yöntemi ve bildirim ayarları burada olacak."
+        onBack={() => setActiveTab('home')}
+        activeTab="settings"
+        setActiveTab={setActiveTab}
+      />
     );
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safe}>
       <StatusBar
         barStyle="light-content"
         backgroundColor="#061218"
@@ -652,7 +429,6 @@ export default function App() {
 
       <ScrollView
         contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
           <View>
@@ -660,15 +436,13 @@ export default function App() {
               Esselâmü Aleyküm
             </Text>
 
-            <Text style={styles.appTitle}>
+            <Text style={styles.title}>
               Namaz Vakti
             </Text>
           </View>
 
-          <View style={styles.locationBadge}>
-            <Text style={styles.locationIcon}>
-              📍
-            </Text>
+          <View style={styles.location}>
+            <Text>📍</Text>
 
             <Text
               style={styles.locationText}
@@ -682,94 +456,87 @@ export default function App() {
         </View>
 
         <View style={styles.dateCard}>
-          <Text style={styles.dateTitle}>
-            {todayText}
+          <Text style={styles.date}>
+            {today}
           </Text>
 
-          <Text style={styles.hijriText}>
+          <Text style={styles.hijri}>
             {hijriText}
           </Text>
         </View>
 
-        {error ? (
-          <View style={styles.warningCard}>
+        {error && (
+          <View style={styles.warning}>
             <Text style={styles.warningText}>
               {error}
             </Text>
           </View>
-        ) : null}
+        )}
 
         <View style={styles.nextCard}>
-          <View style={styles.nextTop}>
-            <View>
-              <Text style={styles.smallLabel}>
-                SIRADAKİ NAMAZ
-              </Text>
+          <Text style={styles.small}>
+            SIRADAKİ NAMAZ
+          </Text>
 
-              <Text
-                style={styles.nextPrayerName}
-              >
-                {nextPrayer
-                  ? `${nextPrayer.icon} ${nextPrayer.name}`
-                  : 'Namaz'}
-              </Text>
-            </View>
+          <View style={styles.nextRow}>
+            <Text style={styles.nextName}>
+              {next
+                ? `${next.icon} ${next.name}`
+                : 'Namaz'}
+            </Text>
 
             <Text style={styles.nextTime}>
-              {nextPrayer
-                ? formatTime(nextPrayer.time)
-                : '--:--'}
+              {next ? formatTime(next.time) : '--:--'}
             </Text>
           </View>
 
-          <View style={styles.divider} />
+          <View style={styles.line} />
 
-          <Text style={styles.countdownLabel}>
+          <Text style={styles.small}>
             Kalan süre
           </Text>
 
-          <Text style={styles.countdown}>
-            {countdown}
+          <Text style={styles.count}>
+            {next
+              ? countdown(next.seconds)
+              : '--:--:--'}
           </Text>
         </View>
 
-        <Text style={styles.sectionTitle}>
+        <Text style={styles.section}>
           Bugünün Vakitleri
         </Text>
 
-        <View style={styles.prayerGrid}>
-          {PRAYERS.map((prayer) => {
-            const isNext =
-              nextPrayer?.key === prayer.key;
+        <View style={styles.grid}>
+          {PRAYERS.map((p) => {
+            const active = next?.key === p.key;
 
             return (
               <View
-                key={prayer.key}
+                key={p.key}
                 style={[
-                  styles.prayerCard,
-                  isNext &&
-                    styles.prayerCardActive,
+                  styles.prayer,
+                  active && styles.prayerActive,
                 ]}
               >
                 <Text style={styles.prayerIcon}>
-                  {prayer.icon}
+                  {p.icon}
                 </Text>
 
                 <Text style={styles.prayerName}>
-                  {prayer.name}
+                  {p.name}
                 </Text>
 
                 <Text
                   style={[
                     styles.prayerTime,
-                    isNext &&
-                      styles.prayerTimeActive,
+                    active && styles.activeText,
                   ]}
                 >
                   {loading
                     ? '--:--'
                     : formatTime(
-                        timings?.[prayer.key]
+                        timings?.[p.key]
                       )}
                 </Text>
               </View>
@@ -777,100 +544,526 @@ export default function App() {
           })}
         </View>
 
-        <Text style={styles.sectionTitle}>
+        <Text style={styles.section}>
           Hızlı Erişim
         </Text>
 
         <View style={styles.quickGrid}>
-          <QuickCard
+          <Quick
             icon="📖"
             title="Kur'an"
             subtitle="Oku"
-            onPress={() =>
-              setActiveTab('quran')
-            }
+            onPress={() => setActiveTab('quran')}
           />
 
-          <QuickCard
+          <Quick
             icon="📿"
             title="Zikir"
             subtitle="Tesbihat"
-            onPress={() =>
-              setActiveTab('zikr')
-            }
+            onPress={() => setActiveTab('zikr')}
           />
 
-          <QuickCard
+          <Quick
             icon="🤲"
             title="Dualar"
             subtitle="Günlük dualar"
-            onPress={() =>
-              setActiveTab('duas')
-            }
+            onPress={() => setActiveTab('duas')}
           />
 
-          <QuickCard
+          <Quick
             icon="🧭"
             title="Kıble"
             subtitle="Canlı pusula"
-            onPress={() =>
-              setActiveTab('qibla')
-            }
+            onPress={() => setActiveTab('qibla')}
           />
         </View>
 
         <TouchableOpacity
           style={styles.qiblaCard}
-          onPress={() =>
-            setActiveTab('qibla')
-          }
-          activeOpacity={0.8}
+          onPress={() => setActiveTab('qibla')}
         >
           <View>
             <Text style={styles.qiblaTitle}>
               🧭 Kıble Pusulası
             </Text>
 
-            <Text style={styles.qiblaSubtitle}>
+            <Text style={styles.qiblaSub}>
               Kâbe yönünü canlı olarak göster
             </Text>
           </View>
 
-          <Text style={styles.arrow}>
-            →
-          </Text>
+          <Text style={styles.arrow}>→</Text>
         </TouchableOpacity>
 
-        <View style={styles.quoteCard}>
-          <Text style={styles.quoteIcon}>
-            ❝
-          </Text>
+        <View style={styles.quote}>
+          <Text style={styles.quoteMark}>❝</Text>
 
-          <Text style={styles.quote}>
-            “Şüphesiz namaz, müminler üzerine
-            vakitleri belirlenmiş bir farzdır.”
+          <Text style={styles.quoteText}>
+            “Şüphesiz namaz, müminler üzerine vakitleri
+            belirlenmiş bir farzdır.”
           </Text>
 
           <Text style={styles.quoteSource}>
             Nisâ Suresi, 103
           </Text>
         </View>
+      </ScrollView>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>
-            🌍 Uluslararası
+      <BottomBar
+        activeTab="home"
+        setActiveTab={setActiveTab}
+      />
+    </SafeAreaView>
+  );
+}
+
+function QuranScreen({ onBack }) {
+  const [surahs, setSurahs] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [ayahs, setAyahs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [surahLoading, setSurahLoading] =
+    useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    fetch('https://api.alquran.cloud/v1/surah')
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.code !== 200) throw new Error();
+
+        if (alive) {
+          setSurahs(json.data || []);
+          setError(null);
+        }
+      })
+      .catch(() => {
+        if (alive) {
+          setError(
+            'Sureler yüklenemedi. İnternet bağlantısını kontrol edin.'
+          );
+        }
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function openSurah(surah) {
+    setSelected(surah);
+    setAyahs([]);
+    setSurahLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `https://api.alquran.cloud/v1/surah/${surah.number}/quran-uthmani`
+      );
+
+      const json = await response.json();
+
+      if (json.code !== 200) throw new Error();
+
+      setAyahs(json.data?.ayahs || []);
+    } catch {
+      setError(
+        'Sure yüklenemedi. Lütfen tekrar deneyin.'
+      );
+    } finally {
+      setSurahLoading(false);
+    }
+  }
+
+  if (selected) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar
+          barStyle="light-content"
+          backgroundColor="#061218"
+        />
+
+        <ScrollView
+          contentContainerStyle={styles.container}
+        >
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.greeting}>
+                Kur’an-ı Kerim
+              </Text>
+
+              <Text style={styles.title}>
+                {selected.englishName}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.back}
+              onPress={() => {
+                setSelected(null);
+                setAyahs([]);
+              }}
+            >
+              <Text style={styles.backText}>
+                ←
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.surahHeader}>
+            <Text style={styles.surahArabic}>
+              {selected.name}
+            </Text>
+
+            <Text style={styles.surahTitle}>
+              {selected.englishName}
+            </Text>
+
+            <Text style={styles.surahTranslation}>
+              {selected.englishNameTranslation}
+            </Text>
+
+            <Text style={styles.surahInfo}>
+              {selected.numberOfAyahs} ayet •{' '}
+              {selected.revelationType === 'Meccan'
+                ? 'Mekkî'
+                : 'Medenî'}
+            </Text>
+          </View>
+
+          {surahLoading ? (
+            <View style={styles.loading}>
+              <ActivityIndicator
+                size="large"
+                color="#E8B04B"
+              />
+
+              <Text style={styles.loadingText}>
+                Sure yükleniyor...
+              </Text>
+            </View>
+          ) : (
+            ayahs.map((ayah) => (
+              <View
+                key={ayah.number}
+                style={styles.ayah}
+              >
+                <View style={styles.ayahTop}>
+                  <View style={styles.number}>
+                    <Text style={styles.numberText}>
+                      {ayah.numberInSurah}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.reference}>
+                    {selected.number}:
+                    {ayah.numberInSurah}
+                  </Text>
+                </View>
+
+                <Text style={styles.arabic}>
+                  {ayah.text}
+                </Text>
+              </View>
+            ))
+          )}
+
+          {error && (
+            <View style={styles.warning}>
+              <Text style={styles.warningText}>
+                {error}
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <BottomBar
+          activeTab="quran"
+          setActiveTab={onBack}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#061218"
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.container}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>
+              Kur’an-ı Kerim
+            </Text>
+
+            <Text style={styles.title}>
+              114 Sure
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.back}
+            onPress={onBack}
+          >
+            <Text style={styles.backText}>
+              ←
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.quranIntro}>
+          <Text style={styles.quranIntroTitle}>
+            📖 Kur’an-ı Kerim
           </Text>
 
-          <Text style={styles.infoText}>
-            Uygulama bulunduğun konumu kullanır
-            ve bulunduğun yere göre namaz
-            vakitlerini hesaplar.
+          <Text style={styles.quranIntroText}>
+            114 sureyi Arapça metinleriyle okuyabilirsin.
           </Text>
         </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            Namaz Vakti • Dünya'nın her yerinde 🕌
+        {loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator
+              size="large"
+              color="#E8B04B"
+            />
+
+            <Text style={styles.loadingText}>
+              Sureler yükleniyor...
+            </Text>
+          </View>
+        ) : (
+          surahs.map((surah) => (
+            <TouchableOpacity
+              key={surah.number}
+              style={styles.surahCard}
+              onPress={() => openSurah(surah)}
+              activeOpacity={0.8}
+            >
+              <View style={styles.number}>
+                <Text style={styles.numberText}>
+                  {surah.number}
+                </Text>
+              </View>
+
+              <View style={styles.surahInfoBox}>
+                <Text style={styles.surahName}>
+                  {surah.englishName}
+                </Text>
+
+                <Text style={styles.surahTranslation}>
+                  {surah.englishNameTranslation}
+                </Text>
+
+                <Text style={styles.surahCount}>
+                  {surah.numberOfAyahs} ayet
+                </Text>
+              </View>
+
+              <Text style={styles.surahArabicSmall}>
+                {surah.name}
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
+
+        {error && (
+          <View style={styles.warning}>
+            <Text style={styles.warningText}>
+              {error}
+            </Text>
+          </View>
+        )}
+      </ScrollView>
+
+      <BottomBar
+        activeTab="quran"
+        setActiveTab={onBack}
+      />
+    </SafeAreaView>
+  );
+}
+
+function QiblaScreen({
+  location,
+  qibla,
+  heading,
+  onBack,
+  setActiveTab,
+}) {
+  const rotation =
+    qibla === null
+      ? 0
+      : normalize(qibla - heading);
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#061218"
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.container}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>
+              Kıble
+            </Text>
+
+            <Text style={styles.title}>
+              Kıble Pusulası
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.back}
+            onPress={onBack}
+          >
+            <Text style={styles.backText}>
+              ←
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.qiblaMain}>
+          <Text style={styles.qiblaMainTitle}>
+            🕋 Kâbe yönü
+          </Text>
+
+          <Text style={styles.qiblaLocation}>
+            {location?.city || 'Konum'}
+          </Text>
+
+          <View style={styles.compass}>
+            <Text style={[styles.compassN, styles.n]}>
+              N
+            </Text>
+
+            <Text style={[styles.compassN, styles.e]}>
+              E
+            </Text>
+
+            <Text style={[styles.compassN, styles.s]}>
+              S
+            </Text>
+
+            <Text style={[styles.compassN, styles.w]}>
+              W
+            </Text>
+
+            <View
+              style={[
+                styles.needle,
+                {
+                  transform: [
+                    {
+                      rotate: `${rotation}deg`,
+                    },
+                  ],
+                },
+              ]}
+            >
+              <Text style={styles.needleText}>
+                ▲
+              </Text>
+            </View>
+
+            <View style={styles.compassCenter}>
+              <Text style={styles.kaaba}>
+                🕋
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.degree}>
+            {qibla === null
+              ? '--'
+              : `${Math.round(qibla)}°`}
+          </Text>
+
+          <Text style={styles.direction}>
+            {qibla === null
+              ? 'Hesaplanıyor...'
+              : direction(qibla)}
+          </Text>
+
+          <Text style={styles.hint}>
+            Telefonunu yatay tut ve pusulayı Kâbe yönüne
+            çevir.
+          </Text>
+        </View>
+      </ScrollView>
+
+      <BottomBar
+        activeTab="qibla"
+        setActiveTab={setActiveTab}
+      />
+    </SafeAreaView>
+  );
+}
+
+function Placeholder({
+  icon,
+  title,
+  text,
+  onBack,
+  activeTab,
+  setActiveTab,
+}) {
+  return (
+    <SafeAreaView style={styles.safe}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#061218"
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.container}
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greeting}>
+              {title}
+            </Text>
+
+            <Text style={styles.title}>
+              Namaz Vakti
+            </Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.back}
+            onPress={onBack}
+          >
+            <Text style={styles.backText}>
+              ←
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.placeholder}>
+          <Text style={styles.placeholderIcon}>
+            {icon}
+          </Text>
+
+          <Text style={styles.placeholderTitle}>
+            {title}
+          </Text>
+
+          <Text style={styles.placeholderText}>
+            {text}
           </Text>
         </View>
       </ScrollView>
@@ -883,7 +1076,7 @@ export default function App() {
   );
 }
 
-function QuickCard({
+function Quick({
   icon,
   title,
   subtitle,
@@ -891,9 +1084,9 @@ function QuickCard({
 }) {
   return (
     <TouchableOpacity
-      style={styles.quickCard}
-      activeOpacity={0.8}
+      style={styles.quick}
       onPress={onPress}
+      activeOpacity={0.8}
     >
       <Text style={styles.quickIcon}>
         {icon}
@@ -903,7 +1096,7 @@ function QuickCard({
         {title}
       </Text>
 
-      <Text style={styles.quickSubtitle}>
+      <Text style={styles.quickSub}>
         {subtitle}
       </Text>
     </TouchableOpacity>
@@ -915,47 +1108,39 @@ function BottomBar({
   setActiveTab,
 }) {
   return (
-    <View style={styles.bottomBar}>
-      <BottomButton
+    <View style={styles.bottom}>
+      <Bottom
         icon="⌂"
         title="Ana Sayfa"
         active={activeTab === 'home'}
-        onPress={() =>
-          setActiveTab('home')
-        }
+        onPress={() => setActiveTab('home')}
       />
 
-      <BottomButton
+      <Bottom
         icon="📖"
         title="Kur'an"
         active={activeTab === 'quran'}
-        onPress={() =>
-          setActiveTab('quran')
-        }
+        onPress={() => setActiveTab('quran')}
       />
 
-      <BottomButton
+      <Bottom
         icon="🧭"
         title="Kıble"
         active={activeTab === 'qibla'}
-        onPress={() =>
-          setActiveTab('qibla')
-        }
+        onPress={() => setActiveTab('qibla')}
       />
 
-      <BottomButton
+      <Bottom
         icon="⚙️"
         title="Ayarlar"
         active={activeTab === 'settings'}
-        onPress={() =>
-          setActiveTab('settings')
-        }
+        onPress={() => setActiveTab('settings')}
       />
     </View>
   );
 }
 
-function BottomButton({
+function Bottom({
   icon,
   title,
   active,
@@ -964,13 +1149,12 @@ function BottomButton({
   return (
     <TouchableOpacity
       style={styles.bottomButton}
-      activeOpacity={0.8}
       onPress={onPress}
     >
       <Text
         style={[
           styles.bottomIcon,
-          active && styles.bottomActive,
+          active && styles.activeText,
         ]}
       >
         {icon}
@@ -979,7 +1163,7 @@ function BottomButton({
       <Text
         style={[
           styles.bottomTitle,
-          active && styles.bottomActive,
+          active && styles.activeText,
         ]}
       >
         {title}
@@ -989,14 +1173,13 @@ function BottomButton({
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  safe: {
     flex: 1,
     backgroundColor: '#061218',
   },
 
   container: {
-    paddingHorizontal: 18,
-    paddingTop: 12,
+    padding: 18,
     paddingBottom: 110,
   },
 
@@ -1008,71 +1191,84 @@ const styles = StyleSheet.create({
   },
 
   greeting: {
-    color: '#A8B3B5',
-    fontSize: 14,
-    marginBottom: 5,
+    color: '#9BA7A8',
+    fontSize: 13,
+    marginBottom: 4,
   },
 
-  appTitle: {
-    color: '#E8B04B',
-    fontSize: 29,
+  title: {
+    color: '#FFFFFF',
+    fontSize: 25,
     fontWeight: '800',
   },
 
-  locationBadge: {
+  location: {
     maxWidth: 145,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#101F24',
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-
-  locationIcon: {
-    fontSize: 13,
-    marginRight: 5,
+    backgroundColor: '#10242A',
+    borderRadius: 18,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#193139',
   },
 
   locationText: {
-    color: '#D9E0E1',
-    fontSize: 12,
-    fontWeight: '600',
+    color: '#D9E0E0',
+    fontSize: 11,
+    marginLeft: 5,
+    flexShrink: 1,
+  },
+
+  back: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#10242A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#28464D',
+  },
+
+  backText: {
+    color: '#E8B04B',
+    fontSize: 25,
   },
 
   dateCard: {
     backgroundColor: '#0D1B20',
-    borderRadius: 18,
-    padding: 17,
+    borderRadius: 20,
+    padding: 18,
     marginBottom: 14,
     borderWidth: 1,
     borderColor: '#193139',
   },
 
-  dateTitle: {
+  date: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
     textTransform: 'capitalize',
   },
 
-  hijriText: {
-    color: '#9BA7A8',
+  hijri: {
+    color: '#E8B04B',
     fontSize: 13,
-    marginTop: 5,
+    marginTop: 6,
   },
 
-  warningCard: {
-    backgroundColor: '#302719',
-    borderRadius: 14,
-    padding: 12,
+  warning: {
+    backgroundColor: '#2A2115',
+    borderRadius: 16,
+    padding: 13,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#6C5227',
+    borderColor: '#5B4424',
   },
 
   warningText: {
-    color: '#E8C984',
+    color: '#E8B04B',
     fontSize: 12,
     lineHeight: 18,
   },
@@ -1080,107 +1276,99 @@ const styles = StyleSheet.create({
   nextCard: {
     backgroundColor: '#10242A',
     borderRadius: 24,
-    padding: 21,
-    marginBottom: 24,
+    padding: 20,
+    marginBottom: 22,
     borderWidth: 1,
     borderColor: '#28464D',
   },
 
-  nextTop: {
+  small: {
+    color: '#7F9194',
+    fontSize: 10,
+    letterSpacing: 1.2,
+    fontWeight: '800',
+  },
+
+  nextRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 7,
   },
 
-  smallLabel: {
-    color: '#8D9A9C',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.4,
-    marginBottom: 8,
-  },
-
-  nextPrayerName: {
+  nextName: {
     color: '#FFFFFF',
-    fontSize: 25,
+    fontSize: 22,
     fontWeight: '800',
   },
 
   nextTime: {
     color: '#E8B04B',
-    fontSize: 28,
+    fontSize: 25,
     fontWeight: '800',
   },
 
-  divider: {
+  line: {
     height: 1,
-    backgroundColor: '#28444B',
-    marginVertical: 17,
+    backgroundColor: '#294047',
+    marginVertical: 16,
   },
 
-  countdownLabel: {
-    color: '#8D9A9C',
-    fontSize: 12,
-    textAlign: 'center',
-  },
-
-  countdown: {
+  count: {
     color: '#E8B04B',
-    fontSize: 34,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 4,
-    letterSpacing: 1,
-  },
-
-  sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 19,
-    fontWeight: '800',
-    marginBottom: 12,
-  },
-
-  prayerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginBottom: 25,
-  },
-
-  prayerCard: {
-    width: '48.2%',
-    backgroundColor: '#0D1B20',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#193139',
-  },
-
-  prayerCardActive: {
-    borderColor: '#C89235',
-    backgroundColor: '#18272A',
-  },
-
-  prayerIcon: {
-    fontSize: 19,
-    marginBottom: 7,
-  },
-
-  prayerName: {
-    color: '#9BA7A8',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-
-  prayerTime: {
-    color: '#FFFFFF',
-    fontSize: 22,
+    fontSize: 31,
     fontWeight: '800',
     marginTop: 5,
   },
 
-  prayerTimeActive: {
+  section: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+
+  prayer: {
+    width: '31.5%',
+    backgroundColor: '#0D1B20',
+    borderRadius: 17,
+    paddingVertical: 15,
+    alignItems: 'center',
+    marginBottom: 9,
+    borderWidth: 1,
+    borderColor: '#193139',
+  },
+
+  prayerActive: {
+    backgroundColor: '#182F32',
+    borderColor: '#E8B04B',
+  },
+
+  prayerIcon: {
+    fontSize: 20,
+    marginBottom: 6,
+  },
+
+  prayerName: {
+    color: '#9BA7A8',
+    fontSize: 11,
+  },
+
+  prayerTime: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    marginTop: 5,
+  },
+
+  activeText: {
     color: '#E8B04B',
   },
 
@@ -1188,14 +1376,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: 15,
+    marginBottom: 14,
   },
 
-  quickCard: {
+  quick: {
     width: '48.2%',
     backgroundColor: '#0D1B20',
     borderRadius: 18,
-    padding: 17,
+    padding: 16,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#193139',
@@ -1212,17 +1400,17 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  quickSubtitle: {
-    color: '#7F8C8E',
+  quickSub: {
+    color: '#7F9194',
     fontSize: 11,
-    marginTop: 3,
+    marginTop: 4,
   },
 
   qiblaCard: {
     backgroundColor: '#10242A',
     borderRadius: 19,
     padding: 18,
-    marginBottom: 15,
+    marginBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1232,80 +1420,47 @@ const styles = StyleSheet.create({
 
   qiblaTitle: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
   },
 
-  qiblaSubtitle: {
+  qiblaSub: {
     color: '#8D9A9C',
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 5,
   },
 
   arrow: {
     color: '#E8B04B',
-    fontSize: 30,
-    fontWeight: '700',
-  },
-
-  quoteCard: {
-    backgroundColor: '#0D1B20',
-    borderRadius: 19,
-    padding: 19,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#193139',
-  },
-
-  quoteIcon: {
-    color: '#E8B04B',
     fontSize: 25,
   },
 
   quote: {
-    color: '#E2E8E8',
+    backgroundColor: '#0D1B20',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#193139',
+  },
+
+  quoteMark: {
+    color: '#E8B04B',
+    fontSize: 28,
+  },
+
+  quoteText: {
+    color: '#F2F0E9',
     fontSize: 15,
     lineHeight: 24,
-    marginTop: 4,
   },
 
   quoteSource: {
-    color: '#899799',
-    fontSize: 12,
+    color: '#8D9A9C',
+    fontSize: 11,
     marginTop: 10,
   },
 
-  infoCard: {
-    backgroundColor: '#0D1B20',
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 18,
-  },
-
-  infoTitle: {
-    color: '#E8B04B',
-    fontSize: 15,
-    fontWeight: '800',
-    marginBottom: 7,
-  },
-
-  infoText: {
-    color: '#9BA7A8',
-    fontSize: 12,
-    lineHeight: 19,
-  },
-
-  footer: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-
-  footerText: {
-    color: '#566568',
-    fontSize: 11,
-  },
-
-  qiblaMainCard: {
+  qiblaMain: {
     backgroundColor: '#10242A',
     borderRadius: 26,
     padding: 20,
@@ -1315,49 +1470,59 @@ const styles = StyleSheet.create({
   },
 
   qiblaMainTitle: {
-    color: '#FFFFFF',
-    fontSize: 23,
+    color: '#E8B04B',
+    fontSize: 20,
     fontWeight: '800',
   },
 
   qiblaLocation: {
     color: '#8D9A9C',
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 5,
+    marginBottom: 18,
   },
 
   compass: {
-    width: 280,
-    height: 280,
-    borderRadius: 140,
+    width: 250,
+    height: 250,
+    borderRadius: 125,
     borderWidth: 2,
-    borderColor: '#35545B',
-    marginTop: 25,
+    borderColor: '#36535A',
+    backgroundColor: '#0B1A1F',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
-    backgroundColor: '#0A1B20',
   },
 
-  compassNeedle: {
+  compassN: {
     position: 'absolute',
-    width: 220,
-    height: 220,
+    color: '#A8B5B6',
+    fontWeight: '800',
+  },
+
+  n: { top: 14 },
+  e: { right: 18 },
+  s: { bottom: 14 },
+  w: { left: 18 },
+
+  needle: {
+    position: 'absolute',
+    width: 5,
+    height: 100,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
 
-  needle: {
+  needleText: {
     color: '#E8B04B',
-    fontSize: 42,
-    marginTop: -8,
+    fontSize: 38,
   },
 
   compassCenter: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#142C32',
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: '#172C31',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -1365,103 +1530,232 @@ const styles = StyleSheet.create({
   },
 
   kaaba: {
-    fontSize: 27,
-  },
-
-  compassLabel: {
-    position: 'absolute',
-    color: '#9BA7A8',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-
-  north: {
-    top: 15,
-  },
-
-  east: {
-    right: 17,
-  },
-
-  south: {
-    bottom: 15,
-  },
-
-  west: {
-    left: 17,
-  },
-
-  qiblaDegrees: {
-    color: '#E8B04B',
-    fontSize: 35,
-    fontWeight: '800',
-    marginTop: 20,
-  },
-
-  qiblaDirectionText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-    marginTop: 3,
-  },
-
-  compassHint: {
-    color: '#8D9A9C',
-    fontSize: 12,
-    lineHeight: 19,
-    textAlign: 'center',
-    marginTop: 18,
-    maxWidth: 310,
-  },
-
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#10242A',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  backText: {
-    color: '#E8B04B',
     fontSize: 25,
   },
 
-  bottomBar: {
+  degree: {
+    color: '#E8B04B',
+    fontSize: 27,
+    fontWeight: '800',
+    marginTop: 18,
+  },
+
+  direction: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    marginTop: 3,
+  },
+
+  hint: {
+    color: '#8D9A9C',
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 16,
+  },
+
+  quranIntro: {
+    backgroundColor: '#10242A',
+    borderRadius: 20,
+    padding: 19,
+    marginBottom: 18,
+    borderWidth: 1,
+    borderColor: '#28464D',
+  },
+
+  quranIntroTitle: {
+    color: '#E8B04B',
+    fontSize: 20,
+    fontWeight: '800',
+  },
+
+  quranIntroText: {
+    color: '#9BA7A8',
+    fontSize: 13,
+    marginTop: 7,
+  },
+
+  surahCard: {
+    backgroundColor: '#0D1B20',
+    borderRadius: 18,
+    padding: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#193139',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  number: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#18272A',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+
+  numberText: {
+    color: '#E8B04B',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  surahInfoBox: {
+    flex: 1,
+  },
+
+  surahName: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
+  surahTranslation: {
+    color: '#7F8C8E',
+    fontSize: 11,
+    marginTop: 3,
+  },
+
+  surahCount: {
+    color: '#8D9A9C',
+    fontSize: 10,
+    marginTop: 4,
+  },
+
+  surahArabicSmall: {
+    color: '#E8B04B',
+    fontSize: 19,
+    maxWidth: 105,
+    marginLeft: 7,
+  },
+
+  surahHeader: {
+    backgroundColor: '#10242A',
+    borderRadius: 22,
+    padding: 22,
+    marginBottom: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#28464D',
+  },
+
+  surahArabic: {
+    color: '#E8B04B',
+    fontSize: 29,
+    fontWeight: '800',
+  },
+
+  surahTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+    marginTop: 7,
+  },
+
+  surahInfo: {
+    color: '#8D9A9C',
+    fontSize: 12,
+    marginTop: 7,
+  },
+
+  loading: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+
+  loadingText: {
+    color: '#8D9A9C',
+    marginTop: 12,
+  },
+
+  ayah: {
+    backgroundColor: '#0D1B20',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#193139',
+  },
+
+  ayahTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 13,
+  },
+
+  reference: {
+    color: '#66777A',
+    fontSize: 10,
+  },
+
+  arabic: {
+    color: '#F4F1E8',
+    fontSize: 24,
+    lineHeight: 46,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+
+  placeholder: {
+    backgroundColor: '#10242A',
+    borderRadius: 24,
+    padding: 30,
+    alignItems: 'center',
+    marginTop: 20,
+    borderWidth: 1,
+    borderColor: '#28464D',
+  },
+
+  placeholderIcon: {
+    fontSize: 50,
+    marginBottom: 16,
+  },
+
+  placeholderTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+
+  placeholderText: {
+    color: '#8D9A9C',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 10,
+  },
+
+  bottom: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 82,
-    backgroundColor: '#08171C',
-    borderTopWidth: 1,
-    borderTopColor: '#193139',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    height: 70,
+    borderRadius: 23,
+    backgroundColor: '#0D1B20',
+    borderWidth: 1,
+    borderColor: '#28464D',
     flexDirection: 'row',
     justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingBottom: 8,
   },
 
   bottomButton: {
-    alignItems: 'center',
+    flex: 1,
     justifyContent: 'center',
-    width: '25%',
+    alignItems: 'center',
   },
 
   bottomIcon: {
-    fontSize: 20,
-    color: '#718083',
-    marginBottom: 4,
+    color: '#718084',
+    fontSize: 19,
   },
 
   bottomTitle: {
-    fontSize: 10,
-    color: '#718083',
-    fontWeight: '600',
+    color: '#718084',
+    fontSize: 9,
+    marginTop: 4,
   },
-
-  bottomActive: {
-    color: '#E8B04B',
-  },
-}); 
+});
