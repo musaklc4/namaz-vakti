@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   SafeAreaView,
   View,
@@ -6,21 +6,149 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
 
-const prayers = [
-  { name: 'İmsak', time: '05:12' },
-  { name: 'Güneş', time: '06:39' },
-  { name: 'Öğle', time: '13:05' },
-  { name: 'İkindi', time: '16:34' },
-  { name: 'Akşam', time: '19:18' },
-  { name: 'Yatsı', time: '20:42' },
+const ISTANBUL = {
+  latitude: 41.0082,
+  longitude: 28.9784,
+};
+
+const prayerMap = [
+  { key: 'Fajr', name: 'İmsak' },
+  { key: 'Sunrise', name: 'Güneş' },
+  { key: 'Dhuhr', name: 'Öğle' },
+  { key: 'Asr', name: 'İkindi' },
+  { key: 'Maghrib', name: 'Akşam' },
+  { key: 'Isha', name: 'Yatsı' },
 ];
 
+function formatDate(date) {
+  return date.toLocaleDateString('tr-TR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    weekday: 'long',
+  });
+}
+
+function getRemaining(target) {
+  const now = new Date();
+  const diff = target - now;
+
+  if (diff <= 0) return '00:00:00';
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return [
+    hours,
+    minutes,
+    seconds,
+  ]
+    .map((n) => String(n).padStart(2, '0'))
+    .join(':');
+}
+
 export default function App() {
+  const [timings, setTimings] = useState(null);
+  const [hijri, setHijri] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    fetchPrayerTimes();
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  async function fetchPrayerTimes() {
+    try {
+      setLoading(true);
+
+      const today = new Date();
+      const date = `${String(today.getDate()).padStart(2, '0')}-${String(
+        today.getMonth() + 1
+      ).padStart(2, '0')}-${today.getFullYear()}`;
+
+      const url =
+        `https://api.aladhan.com/v1/timings/${date}` +
+        `?latitude=${ISTANBUL.latitude}` +
+        `&longitude=${ISTANBUL.longitude}` +
+        `&method=13`;
+
+      const response = await fetch(url);
+      const json = await response.json();
+
+      if (json.code !== 200) {
+        throw new Error('Vakitler alınamadı');
+      }
+
+      setTimings(json.data.timings);
+
+      const h = json.data.date.hijri;
+      setHijri(`${h.day} ${h.month.ar} ${h.year}`);
+
+      setError(false);
+    } catch (e) {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const prayers = useMemo(() => {
+    if (!timings) return [];
+
+    return prayerMap.map((item) => ({
+      ...item,
+      time: timings[item.key]?.slice(0, 5) || '--:--',
+    }));
+  }, [timings]);
+
+  const nextPrayer = useMemo(() => {
+    if (!prayers.length) return null;
+
+    for (const prayer of prayers) {
+      const [hour, minute] = prayer.time.split(':').map(Number);
+
+      const target = new Date(now);
+      target.setHours(hour, minute, 0, 0);
+
+      if (target > now) {
+        return {
+          ...prayer,
+          target,
+        };
+      }
+    }
+
+    const first = prayers[0];
+    const [hour, minute] = first.time.split(':').map(Number);
+
+    const target = new Date(now);
+    target.setDate(target.getDate() + 1);
+    target.setHours(hour, minute, 0, 0);
+
+    return {
+      ...first,
+      target,
+    };
+  }, [prayers, now]);
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -39,41 +167,91 @@ export default function App() {
         </View>
 
         <View style={styles.dateCard}>
-          <Text style={styles.hijri}>17 Rebîülevvel 1448</Text>
-          <Text style={styles.date}>19 Eylül 2026 • Cumartesi</Text>
+          <Text style={styles.hijri}>
+            {hijri || 'Hicrî tarih yükleniyor...'}
+          </Text>
+
+          <Text style={styles.date}>
+            {formatDate(now)}
+          </Text>
         </View>
 
-        <View style={styles.nextCard}>
-          <View>
-            <Text style={styles.smallLabel}>SIRADAKİ NAMAZ</Text>
-            <Text style={styles.nextName}>İkindi</Text>
-            <Text style={styles.nextTime}>16:34</Text>
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" />
+            <Text style={styles.loadingText}>
+              Namaz vakitleri yükleniyor...
+            </Text>
           </View>
-
-          <View style={styles.countdown}>
-            <Text style={styles.countdownLabel}>KALAN SÜRE</Text>
-            <Text style={styles.countdownText}>03:13:42</Text>
+        ) : error ? (
+          <View style={styles.loadingCard}>
+            <Text style={styles.errorText}>
+              Vakitler alınamadı.
+            </Text>
+            <Text style={styles.loadingText}>
+              İnternet bağlantınızı kontrol edin.
+            </Text>
           </View>
-        </View>
+        ) : (
+          <>
+            {nextPrayer && (
+              <View style={styles.nextCard}>
+                <View>
+                  <Text style={styles.smallLabel}>
+                    SIRADAKİ NAMAZ
+                  </Text>
 
-        <Text style={styles.sectionTitle}>Bugünün Vakitleri</Text>
+                  <Text style={styles.nextName}>
+                    {nextPrayer.name}
+                  </Text>
 
-        <View style={styles.prayerGrid}>
-          {prayers.map((prayer, index) => (
-            <View
-              key={prayer.name}
-              style={[
-                styles.prayerCard,
-                index === 3 && styles.activePrayer,
-              ]}
-            >
-              <Text style={styles.prayerName}>{prayer.name}</Text>
-              <Text style={styles.prayerTime}>{prayer.time}</Text>
+                  <Text style={styles.nextTime}>
+                    {nextPrayer.time}
+                  </Text>
+                </View>
+
+                <View style={styles.countdown}>
+                  <Text style={styles.countdownLabel}>
+                    KALAN SÜRE
+                  </Text>
+
+                  <Text style={styles.countdownText}>
+                    {getRemaining(nextPrayer.target)}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.sectionTitle}>
+              Bugünün Vakitleri
+            </Text>
+
+            <View style={styles.prayerGrid}>
+              {prayers.map((prayer) => (
+                <View
+                  key={prayer.key}
+                  style={[
+                    styles.prayerCard,
+                    nextPrayer?.key === prayer.key &&
+                      styles.activePrayer,
+                  ]}
+                >
+                  <Text style={styles.prayerName}>
+                    {prayer.name}
+                  </Text>
+
+                  <Text style={styles.prayerTime}>
+                    {prayer.time}
+                  </Text>
+                </View>
+              ))}
             </View>
-          ))}
-        </View>
+          </>
+        )}
 
-        <Text style={styles.sectionTitle}>Hızlı Erişim</Text>
+        <Text style={styles.sectionTitle}>
+          Hızlı Erişim
+        </Text>
 
         <View style={styles.quickGrid}>
           <View style={styles.quickCard}>
@@ -103,10 +281,15 @@ export default function App() {
 
         <View style={styles.quoteCard}>
           <Text style={styles.quoteMark}>“</Text>
+
           <Text style={styles.quote}>
-            Şüphesiz namaz, müminler üzerine vakitleri belirlenmiş bir farzdır.
+            Şüphesiz namaz, müminler üzerine vakitleri
+            belirlenmiş bir farzdır.
           </Text>
-          <Text style={styles.source}>Nisâ Suresi, 103</Text>
+
+          <Text style={styles.source}>
+            Nisâ Suresi, 103
+          </Text>
         </View>
 
         <View style={styles.bottomNav}>
@@ -263,6 +446,28 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
+  loadingCard: {
+    backgroundColor: '#0D1B21',
+    borderRadius: 24,
+    padding: 30,
+    marginBottom: 28,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#183038',
+  },
+
+  loadingText: {
+    color: '#9BA7A8',
+    marginTop: 12,
+    fontSize: 14,
+  },
+
+  errorText: {
+    color: '#E8B04B',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
   sectionTitle: {
     color: '#FFFFFF',
     fontSize: 19,
@@ -282,9 +487,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#0D1B21',
     borderRadius: 16,
     paddingVertical: 16,
-    paddingHorizontal: 8,
-    marginBottom: 10,
     alignItems: 'center',
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: '#183038',
   },
@@ -353,14 +557,12 @@ const styles = StyleSheet.create({
   quoteMark: {
     color: '#E8B04B',
     fontSize: 35,
-    lineHeight: 30,
   },
 
   quote: {
     color: '#D8DFDF',
     fontSize: 15,
     lineHeight: 23,
-    marginTop: 4,
   },
 
   source: {
