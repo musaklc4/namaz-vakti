@@ -5,10 +5,25 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "scheme": "namazvakti",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.musaklc4.namazvakti"
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Namaz Vakti, bulunduğun konuma göre namaz vakitlerini göstermek için konumunu kullanır."
+        }
+      ],
+      "expo-notifications"
+    ],
     "extra": {
       "eas": {
         "projectId": "d4e891f6-7c26-4c11-91db-6af8dd1b94e7"
