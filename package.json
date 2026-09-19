@@ -6,6 +6,11 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "namazvakti",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.musaklc4.namazvakti"
