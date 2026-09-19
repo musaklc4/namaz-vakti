@@ -1,21 +1,28 @@
 {
-  "name": "namaz-vakti",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
-  },
-  "dependencies": {
-    "expo": "~57.0.1",
-    "expo-status-bar": "~57.0.0",
-    "expo-location": "~57.0.18",
-    "expo-sensors": "~57.0.3",
-    "expo-notifications": "~57.0.20",
-    "react": "19.2.3",
-    "react-native": "0.86.3"
-  },
-  "private": true
+  "expo": {
+    "name": "Namaz Vakti",
+    "slug": "namaz-vakti",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "namazvakti",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.musaklc4.namazvakti"
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Namaz Vakti, bulunduğun konuma göre namaz vakitlerini göstermek için konumunu kullanır."
+        }
+      ],
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d4e891f6-7c26-4c11-91db-6af8dd1b94e7"
+      }
+    }
+  }
 }
