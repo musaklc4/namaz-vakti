@@ -6,7 +6,8 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.musaklc4.namazvakti"
     },
     "extra": {
       "eas": {
