@@ -1,0 +1,30 @@
+name: Namaz Vakti Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Android APK oluştur
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu indir
+        uses: actions/checkout@v4
+
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Paketleri yükle
+        run: npm install
+
+      - name: Expo ve EAS kur
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Android APK oluştur
+        run: eas build --platform android --profile preview --non-interactive --no-wait
