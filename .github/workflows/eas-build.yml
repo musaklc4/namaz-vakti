@@ -15,11 +15,10 @@ jobs:
       - name: Node.js kur
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: 24
 
       - name: Paketleri yükle
-        run: npm ci
+        run: npm install
 
       - name: Expo ve EAS kur
         uses: expo/expo-github-action@v8
